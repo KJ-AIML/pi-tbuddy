@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { TBuddyBridge } from "./bridge.ts";
+import { markdownToTelegramHtml } from "./markdown.ts";
 
 export default function (pi: ExtensionAPI) {
   const bridge = new TBuddyBridge(pi);
@@ -125,9 +126,10 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "test": {
-          const text = rest || "🔔 Test message from Pi on your PC! Everything is working.";
+          const text = rest || "🔔 **Test message from Pi on your PC!** Everything is working.";
           ctx.ui.notify("⏳ Sending test ping to Telegram...", "info");
-          const res = await bridge.sendToTarget(text);
+          const html = markdownToTelegramHtml(text);
+          const res = await bridge.sendToTarget(html, "HTML");
           if (res.ok) {
             ctx.ui.notify("✅ Test message delivered to Telegram!", "info");
           } else {

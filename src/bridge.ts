@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig, type TBuddyConfig } from "./config.ts";
 import { TelegramClient, TelegramPoller, type TelegramChat, type TelegramMessage, type TelegramUser } from "./telegram.ts";
+import { markdownToTelegramHtml } from "./markdown.ts";
 
 export class TBuddyBridge {
   private config: TBuddyConfig;
@@ -74,11 +75,8 @@ export class TBuddyBridge {
 
     if (this.client) {
       try {
-        await this.client.sendMessage(
-          chatId,
-          "🎉 *Pi Telegram Buddy Connected!*\nThis chat is now set as the active target for Pi alerts and remote control.",
-          { parse_mode: "Markdown" }
-        );
+        const md = "🎉 **Pi Telegram Buddy Connected!**\nThis chat is now set as the active target for Pi alerts and remote control.";
+        await this.client.sendMessage(chatId, markdownToTelegramHtml(md), { parse_mode: "HTML" });
       } catch (err: any) {
         return { ok: true, error: `Saved target, but failed to send ping: ${err.message}` };
       }
@@ -130,11 +128,8 @@ export class TBuddyBridge {
     });
 
     if (this.client) {
-      await this.client.sendMessage(
-        chat.id,
-        `🎉 *Successfully paired with Pi!*\n\n• Target User: ${displayName}\n• Chat ID: \`${chat.id}\`\n\nYou'll now receive alerts when Pi finishes tasks or needs input.\nType any message here to send it directly to your Pi session!`,
-        { parse_mode: "Markdown" }
-      );
+      const md = `🎉 **Successfully paired with Pi!**\n\n• Target User: ${displayName}\n• Chat ID: \`${chat.id}\`\n\nYou'll now receive alerts when Pi finishes tasks or needs input.\nType any message here to send it directly to your Pi session!`;
+      await this.client.sendMessage(chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" });
     }
 
     if (this.activeContext) {
@@ -158,11 +153,8 @@ export class TBuddyBridge {
       const model = ctx?.model?.id || "default";
 
       if (this.client) {
-        await this.client.sendMessage(
-          msg.chat.id,
-          `💻 *Pi Status Report*\n\n• *Status:* ${isIdle ? "🟢 Idle (ready)" : "⚡ Working / Thinking"}\n• *Directory:* \`${cwd}\`\n• *Model:* \`${model}\``,
-          { parse_mode: "Markdown" }
-        );
+        const md = `💻 **Pi Status Report**\n\n• **Status:** ${isIdle ? "🟢 Idle (ready)" : "⚡ Working / Thinking"}\n• **Directory:** \`${cwd}\`\n• **Model:** \`${model}\``;
+        await this.client.sendMessage(msg.chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" });
       }
       return;
     }
@@ -171,12 +163,12 @@ export class TBuddyBridge {
       if (ctx && !ctx.isIdle()) {
         ctx.abort();
         if (this.client) {
-          await this.client.sendMessage(msg.chat.id, "🛑 *Aborted active Pi run.*", { parse_mode: "Markdown" });
+          await this.client.sendMessage(msg.chat.id, "🛑 <b>Aborted active Pi run.</b>", { parse_mode: "HTML" });
         }
         ctx.ui.notify("🛑 Aborted run via Telegram /abort command", "warning");
       } else {
         if (this.client) {
-          await this.client.sendMessage(msg.chat.id, "ℹ️ Pi is already idle.", { parse_mode: "Markdown" });
+          await this.client.sendMessage(msg.chat.id, "ℹ️ Pi is already idle.", { parse_mode: "HTML" });
         }
       }
       return;
@@ -184,11 +176,8 @@ export class TBuddyBridge {
 
     if (text === "/help") {
       if (this.client) {
-        await this.client.sendMessage(
-          msg.chat.id,
-          `🤖 *Pi Telegram Buddy Commands:*\n\n• Just send any normal text to prompt or reply to Pi!\n• \`/status\` - Check if Pi is idle or working\n• \`/abort\` - Stop the current thinking/execution\n• \`/help\` - Show this message`,
-          { parse_mode: "Markdown" }
-        );
+        const md = `🤖 **Pi Telegram Buddy Commands:**\n\n• Just send any normal text to prompt or reply to Pi!\n• \`/status\` - Check if Pi is idle or working\n• \`/abort\` - Stop the current thinking/execution\n• \`/help\` - Show this message`;
+        await this.client.sendMessage(msg.chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" });
       }
       return;
     }
@@ -204,11 +193,8 @@ export class TBuddyBridge {
       });
 
       if (this.client) {
-        await this.client.sendMessage(
-          msg.chat.id,
-          `📨 *Forwarded to Pi:* "${preview}"`,
-          { parse_mode: "Markdown" }
-        );
+        const md = `📨 **Forwarded to Pi:** "${preview}"`;
+        await this.client.sendMessage(msg.chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" });
       }
     }
   }
@@ -220,21 +206,25 @@ export class TBuddyBridge {
     if (!this.config.botToken || !this.config.targetChatId) return;
 
     const lastText = this.extractLastAssistantText(ctx);
-    const summary = lastText
-      ? lastText.trim().slice(0, 500) + (lastText.length > 500 ? "..." : "")
-      : "Turn finished with no response text.";
+    const fullText = lastText ? lastText.trim() : "Turn finished with no response text.";
+    const maxBodyLen = 3500;
+    const summary = fullText.length > maxBodyLen
+      ? fullText.slice(0, maxBodyLen) + "\n\n...[truncated]"
+      : fullText;
 
-    const message = `✅ *Pi Finished Task*\n📁 \`${ctx.cwd}\`\n\n${summary}\n\n💬 _Reply to this message on Telegram to steer or continue._`;
+    const rawMarkdown = `✅ **Pi Finished Task**\n📁 \`${ctx.cwd}\`\n\n${summary}\n\n💬 *Reply to this message on Telegram to steer or continue.*`;
+    const htmlMessage = markdownToTelegramHtml(rawMarkdown);
 
-    await this.sendToTarget(message, "Markdown");
+    await this.sendToTarget(htmlMessage, "HTML");
   }
 
   async handleUIPromptStart(title: string | undefined, kind: string): Promise<void> {
     if (!this.config.enabled || !this.config.notifyOnInput) return;
     if (!this.config.botToken || !this.config.targetChatId) return;
 
-    const message = `⚠️ *Pi Needs Input!*\n\nPrompt: ${title || kind}\n\n💬 _Reply directly here with your answer or choice._`;
-    await this.sendToTarget(message, "Markdown");
+    const rawMarkdown = `⚠️ **Pi Needs Input!**\n\nPrompt: ${title || kind}\n\n💬 *Reply directly here with your answer or choice.*`;
+    const htmlMessage = markdownToTelegramHtml(rawMarkdown);
+    await this.sendToTarget(htmlMessage, "HTML");
   }
 
   private extractLastAssistantText(ctx: ExtensionContext): string | undefined {

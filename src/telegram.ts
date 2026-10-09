@@ -1,3 +1,5 @@
+import { ensureBalancedTags } from "./markdown.ts";
+
 export interface TelegramUser {
   id: number;
   is_bot: boolean;
@@ -65,7 +67,10 @@ export class TelegramClient {
   ): Promise<TelegramMessage> {
     // If text exceeds Telegram limit of 4096 chars, truncate gracefully
     const MAX_LEN = 4000;
-    const bodyText = text.length > MAX_LEN ? text.slice(0, MAX_LEN - 20) + "\n\n...[truncated]" : text;
+    let bodyText = text.length > MAX_LEN ? text.slice(0, MAX_LEN - 30) + "\n\n...[truncated]" : text;
+    if (opts?.parse_mode === "HTML") {
+      bodyText = ensureBalancedTags(bodyText);
+    }
 
     try {
       const res = await fetch(`${this.baseUrl}/sendMessage`, {
@@ -80,8 +85,8 @@ export class TelegramClient {
 
       const data = (await res.json()) as TelegramApiResponse<TelegramMessage>;
       if (!data.ok) {
-        // If Markdown parsing failed, retry as plain text
-        if (opts?.parse_mode && data.description?.includes("can't parse entities")) {
+        // If entity parsing failed, retry as plain text
+        if (opts?.parse_mode && (data.description?.includes("can't parse entities") || data.description?.includes("entity"))) {
           return this.sendMessage(chatId, text, undefined);
         }
         throw new Error(data.description || `Failed to sendMessage: HTTP ${res.status}`);
@@ -89,7 +94,7 @@ export class TelegramClient {
       return data.result!;
     } catch (err) {
       if (opts?.parse_mode) {
-        // Retry without markdown on network or unknown parsing errors
+        // Retry without formatting on network or unknown parsing errors
         return this.sendMessage(chatId, text, undefined);
       }
       throw err;
