@@ -14,7 +14,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --experimental-transform-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
