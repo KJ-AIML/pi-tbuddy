@@ -64,15 +64,15 @@ When chatting with your bot on Telegram:
 
 ### Option A: Direct Flag (Quick Testing)
 ```bash
-pi --extension /path/to/pi-tbuddy
+pi --extension ./repos/tbuddy
 ```
 
 ### Option B: Add to User Settings
-Add to your `~/.pi/agent/settings.json`:
+Add to your `~/.pi/agent/settings.json` (or workspace `.pi/settings.json`):
 ```json
 {
   "extensions": [
-    "/Users/kjct0s_/Developer/experiments/pi-tbuddy"
+    "./repos/tbuddy"
   ]
 }
 ```
