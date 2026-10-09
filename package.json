@@ -1,0 +1,25 @@
+{
+  "name": "pi-tbuddy",
+  "version": "0.1.0",
+  "description": "Telegram Companion for Pi: get alerted on your phone when away from your desk, and reply to steer or answer Pi remotely.",
+  "keywords": [
+    "pi-package"
+  ],
+  "type": "module",
+  "main": "src/index.ts",
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --experimental-transform-types --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^22.0.0",
+    "typebox": "^1.3.7",
+    "typescript": "^5.0.0"
+  }
+}
