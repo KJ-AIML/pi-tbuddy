@@ -33,7 +33,7 @@ export default function (pi: ExtensionAPI) {
         { value: "botkey", label: "botkey <token> - Set Telegram bot API key" },
         { value: "target", label: "target <chat_id> - Set target chat/user ID" },
         { value: "status", label: "status - Check Telegram bot and pairing status" },
-        { value: "pair", label: "pair - Show pairing instructions" },
+        { value: "pair", label: "pair - Show a one-time code to pair your phone" },
         { value: "test", label: "test - Send a test message to Telegram" },
         { value: "toggle", label: "toggle - Enable or disable Telegram alerts" },
         { value: "clear", label: "clear - Disconnect bot and clear saved credentials" },
@@ -64,7 +64,7 @@ export default function (pi: ExtensionAPI) {
           const res = await bridge.setBotKey(token);
           if (res.ok && res.bot) {
             ctx.ui.notify(
-              `✅ Connected! Bot: @${res.bot.username} (${res.bot.first_name})\n📱 Send /start to @${res.bot.username} on Telegram to pair your phone!`,
+              `✅ Connected! Bot: @${res.bot.username} (${res.bot.first_name})\n📱 Run /tbuddy pair to get a one-time code for pairing your phone.`,
               "info"
             );
           } else {
@@ -101,7 +101,7 @@ export default function (pi: ExtensionAPI) {
           const botUser = cfg.botUsername ? `@${cfg.botUsername}` : "N/A";
           const target = cfg.targetChatId
             ? `${cfg.targetUser || "User"} (Chat ID: ${cfg.targetChatId})`
-            : "⚠️ Not paired (send /start to bot)";
+            : "⚠️ Not paired (run /tbuddy pair)";
           const status = cfg.enabled ? "🟢 Enabled" : "⚪ Disabled";
 
           ctx.ui.notify(
@@ -118,8 +118,11 @@ export default function (pi: ExtensionAPI) {
             return;
           }
           const botName = cfg.botUsername ? `@${cfg.botUsername}` : "your bot";
+          const { code, minutes, link } = bridge.startPairing();
           ctx.ui.notify(
-            `📲 To pair your phone:\n1. Open Telegram\n2. Search for ${botName}\n3. Send /start\nYour chat will be paired automatically!`,
+            `📲 Pairing code: ${code} (valid ${minutes} minutes, one use)\n` +
+              (link ? `Open ${link} on your phone, or send ` : `In Telegram, send `) +
+              `/pair ${code} to ${botName}.\nOnly a chat with this code can pair; /start alone no longer pairs.`,
             "info"
           );
           break;
@@ -152,7 +155,7 @@ export default function (pi: ExtensionAPI) {
 
         default: {
           ctx.ui.notify(
-            "📱 /tbuddy commands:\n• /tbuddy botkey <token> - Set bot token\n• /tbuddy pair - Pairing instructions\n• /tbuddy target <chat_id> - Set target chat\n• /tbuddy status - Check status\n• /tbuddy test - Send test message\n• /tbuddy toggle - Toggle on/off\n• /tbuddy clear - Reset config",
+            "📱 /tbuddy commands:\n• /tbuddy botkey <token> - Set bot token\n• /tbuddy pair - One-time pairing code\n• /tbuddy target <chat_id> - Set target chat\n• /tbuddy status - Check status\n• /tbuddy test - Send test message\n• /tbuddy toggle - Toggle on/off\n• /tbuddy clear - Reset config",
             "info"
           );
           break;

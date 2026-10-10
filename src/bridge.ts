@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { loadConfig, saveConfig, type TBuddyConfig } from "./config.ts";
 import { TelegramClient, TelegramPoller, type TelegramChat, type TelegramMessage, type TelegramUser } from "./telegram.ts";
 import { markdownToTelegramHtml } from "./markdown.ts";
+import { codeFromCommand, CODE_TTL_MS, PairingCodes } from "./pairing.ts";
 
 export class TBuddyBridge {
   private config: TBuddyConfig;
@@ -9,9 +10,11 @@ export class TBuddyBridge {
   private poller: TelegramPoller | null = null;
   private activeContext: ExtensionContext | null = null;
   private pi: ExtensionAPI;
+  private pairing: PairingCodes;
 
-  constructor(pi: ExtensionAPI) {
+  constructor(pi: ExtensionAPI, pairing: PairingCodes = new PairingCodes()) {
     this.pi = pi;
+    this.pairing = pairing;
     this.config = loadConfig();
     if (this.config.botToken) {
       this.initClient(this.config.botToken);
@@ -32,7 +35,7 @@ export class TBuddyBridge {
       this.client,
       () => this.config.targetChatId,
       (msg) => this.handleIncomingMessage(msg),
-      (user, chat) => this.handlePairRequest(user, chat)
+      (user, chat, text) => this.handlePairRequest(user, chat, text)
     );
   }
 
@@ -84,6 +87,13 @@ export class TBuddyBridge {
     return { ok: true };
   }
 
+  /** Issue a one-time pairing code (valid 10 minutes) and the deep link that sends it. */
+  startPairing(): { code: string; minutes: number; link?: string } {
+    const { code } = this.pairing.issue();
+    const link = this.config.botUsername ? `https://t.me/${this.config.botUsername}?start=${code}` : undefined;
+    return { code, minutes: CODE_TTL_MS / 60_000, link };
+  }
+
   toggleEnabled(): boolean {
     const next = !this.config.enabled;
     this.config = saveConfig({ enabled: next });
@@ -107,7 +117,7 @@ export class TBuddyBridge {
       return { ok: false, error: "Bot token not configured. Run /tbuddy botkey <token>" };
     }
     if (!this.config.targetChatId) {
-      return { ok: false, error: "Target chat not configured. Run /tbuddy target <chat_id> or send /start on Telegram" };
+      return { ok: false, error: "Target chat not configured. Run /tbuddy pair or /tbuddy target <chat_id>" };
     }
 
     try {
@@ -120,8 +130,32 @@ export class TBuddyBridge {
 
   // --- Telegram Incoming Events ---
 
-  private async handlePairRequest(user: TelegramUser, chat: TelegramChat): Promise<void> {
+  /**
+   * Pair only with a valid one-time code from /tbuddy pair. Anyone can message a bot, so /start alone
+   * must never change the paired chat: that would let a stranger send prompts into Pi.
+   */
+  private async handlePairRequest(user: TelegramUser, chat: TelegramChat, text = ""): Promise<void> {
+    const reply = async (message: string) => { try { await this.client?.sendMessage(chat.id, message); } catch {} };
+    if (this.config.targetChatId !== undefined && String(this.config.targetChatId) === String(chat.id)) {
+      await reply("✅ This chat is already paired with Pi.");
+      return;
+    }
     const displayName = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ""}`.trim();
+    const result = this.pairing.check(codeFromCommand(text));
+    if (!result.ok) {
+      const messages = {
+        none: "🔒 Pairing is not open. In Pi, run /tbuddy pair and send the code shown there as: /pair <code>",
+        expired: "⌛ That pairing code expired. Run /tbuddy pair in Pi for a new one.",
+        wrong: "❌ Wrong pairing code. Send /pair <code> with the code shown in Pi.",
+        locked: "🔒 Too many wrong codes; pairing was cancelled. Run /tbuddy pair in Pi again.",
+      } as const;
+      await reply(messages[result.reason]);
+      if (result.reason !== "none") {
+        this.activeContext?.ui.notify(`⚠️ Telegram pairing attempt rejected (${result.reason}) from ${displayName} (Chat ID: ${chat.id})`, "warning");
+      }
+      return;
+    }
+
     this.config = saveConfig({
       targetChatId: chat.id,
       targetUser: displayName,
@@ -129,7 +163,7 @@ export class TBuddyBridge {
 
     if (this.client) {
       const md = `🎉 **Successfully paired with Pi!**\n\n• Target User: ${displayName}\n• Chat ID: \`${chat.id}\`\n\nYou'll now receive alerts when Pi finishes tasks or needs input.\nType any message here to send it directly to your Pi session!`;
-      await this.client.sendMessage(chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" });
+      try { await this.client.sendMessage(chat.id, markdownToTelegramHtml(md), { parse_mode: "HTML" }); } catch {}
     }
 
     if (this.activeContext) {

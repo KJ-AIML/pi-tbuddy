@@ -25,13 +25,18 @@ In any Pi terminal session where `pi-tbuddy` is loaded:
 Pi will verify the token and display:
 ```text
 ✅ Connected! Bot: @MyPiAssistantBot (My Pi Assistant)
-📱 Send /start to @MyPiAssistantBot on Telegram to pair your phone!
+📱 Run /tbuddy pair to get a one-time code for pairing your phone.
 ```
 
 ### 3. Pair Your Phone
-1. Open Telegram and search for your bot.
-2. Send `/start`.
-3. The bot pairs with your Chat ID automatically, sends a confirmation, and Pi will notify you on the terminal!
+1. In Pi, run `/tbuddy pair`. It shows a one-time code (valid 10 minutes) and a `t.me` link.
+2. Open the link on your phone, or send `/pair <code>` to your bot.
+3. The bot pairs that chat, sends a confirmation, and Pi notifies you in the terminal.
+
+Anyone can find and message a Telegram bot, so `/start` alone never pairs or
+changes the paired chat. Wrong codes are rejected and reported in Pi, and five
+wrong tries cancel the code. The config file holding the bot token
+(`~/.pi/agent/tbuddy.json`) is written readable by you only.
 
 ---
 
@@ -40,7 +45,7 @@ Pi will verify the token and display:
 | Command | Description |
 | --- | --- |
 | `/tbuddy botkey <token>` | Paste and save your Telegram Bot API token |
-| `/tbuddy pair` | Show instructions to pair your phone by sending `/start` |
+| `/tbuddy pair` | Show a one-time code (and link) to pair your phone |
 | `/tbuddy target <chat_id>` | Manually set target chat/user ID |
 | `/tbuddy status` | Show current connection, bot, and pairing status |
 | `/tbuddy test [message]` | Send a test message to your Telegram chat |

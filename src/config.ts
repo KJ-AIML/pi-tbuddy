@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -50,7 +50,9 @@ export function saveConfig(updates: Partial<TBuddyConfig>): TBuddyConfig {
   const configPath = getConfigPath();
   try {
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify(next, null, 2), "utf-8");
+    // The file holds the bot token: readable by the owner only.
+    writeFileSync(configPath, JSON.stringify(next, null, 2), { encoding: "utf-8", mode: 0o600 });
+    try { chmodSync(configPath, 0o600); } catch {}
   } catch (err) {
     console.error(`[tbuddy] Failed to save config to ${configPath}:`, err);
   }

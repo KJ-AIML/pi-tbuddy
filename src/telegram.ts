@@ -117,12 +117,14 @@ export class TelegramClient {
 }
 
 export type MessageHandler = (msg: TelegramMessage) => Promise<void> | void;
-export type PairHandler = (user: TelegramUser, chat: TelegramChat) => Promise<void> | void;
+export type PairHandler = (user: TelegramUser, chat: TelegramChat, text: string) => Promise<void> | void;
 
 export class TelegramPoller {
   private running = false;
   private abortController: AbortController | null = null;
   private offset?: number;
+  /** Bumped on every start/stop so a loop from an earlier start can never keep running. */
+  private generation = 0;
   private client: TelegramClient;
   private getTargetChatId: () => number | string | undefined;
   private onMessage: MessageHandler;
@@ -144,11 +146,12 @@ export class TelegramPoller {
     if (this.running) return;
     this.running = true;
     this.abortController = new AbortController();
-    void this.pollLoop();
+    void this.pollLoop(++this.generation, this.abortController.signal);
   }
 
   stop(): void {
     this.running = false;
+    this.generation++;
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
@@ -159,13 +162,14 @@ export class TelegramPoller {
     return this.running;
   }
 
-  private async pollLoop(): Promise<void> {
-    while (this.running) {
+  private async pollLoop(generation: number, signal: AbortSignal): Promise<void> {
+    const current = () => this.running && this.generation === generation;
+    while (current()) {
       try {
-        const signal = this.abortController?.signal;
         const updates = await this.client.getUpdates(this.offset, 20, signal);
 
         for (const update of updates) {
+          if (!current()) return;
           this.offset = update.update_id + 1;
           const msg = update.message;
           if (!msg || !msg.text) continue;
@@ -174,9 +178,9 @@ export class TelegramPoller {
           const isTarget = targetId !== undefined && String(msg.chat.id) === String(targetId);
 
           const trimmed = msg.text.trim();
-          if (trimmed.startsWith("/start") || trimmed.startsWith("/pair")) {
-            // Pairing trigger
-            await this.onPair(msg.from || { id: msg.chat.id, is_bot: false, first_name: msg.chat.first_name || "User" }, msg.chat);
+          if (/^\/(start|pair)(@\w+)?(\s|$)/.test(trimmed)) {
+            // Pairing trigger; the bridge checks the one-time code.
+            await this.onPair(msg.from || { id: msg.chat.id, is_bot: false, first_name: msg.chat.first_name || "User" }, msg.chat, trimmed);
           } else if (isTarget) {
             await this.onMessage(msg);
           } else {
@@ -184,7 +188,7 @@ export class TelegramPoller {
             try {
               await this.client.sendMessage(
                 msg.chat.id,
-                `🔒 Pi Telegram Buddy: This bot is currently paired to another user or chat.\nYour Chat ID is: ${msg.chat.id}\nRun \`/tbuddy target ${msg.chat.id}\` in Pi to authorize this chat.`
+                `🔒 Pi Telegram Buddy: this chat is not paired.\nTo pair, run /tbuddy pair in Pi and send the code shown there as: /pair <code>`
               );
             } catch {
               // Ignore failure to reply to unauthorized users
@@ -192,7 +196,7 @@ export class TelegramPoller {
           }
         }
       } catch (err: unknown) {
-        if (!this.running) break;
+        if (!current()) break;
         // Don't crash on aborted network requests or transient timeouts
         const isAbort = err instanceof Error && (err.name === "AbortError" || err.message.includes("abort"));
         if (!isAbort) {
